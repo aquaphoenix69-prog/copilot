@@ -1,0 +1,27 @@
+# secrets
+.env
+.env.local
+*.key
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# data — too big and proprietary
+data/*.json
+data/*.csv
+
+# editor
+.vscode/
+.idea/
+*.swp
+
+# os
+.DS_Store
+Thumbs.db
+
+# logs
+*.log

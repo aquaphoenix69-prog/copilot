@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Co-pilot</title>
+<style>
+  :root {
+    --bg-0: #0a0c14;
+    --bg-1: #11141d;
+    --line: rgba(255,255,255,0.08);
+    --line-2: rgba(255,255,255,0.14);
+    --fg: #e7e9ee;
+    --fg-dim: #9aa1ad;
+    --fg-mute: #5b6172;
+    --accent: #7c5cff;
+    --accent-2: #2dd4bf;
+    --pos: #2dd4bf;
+    --neg: #ef4f6a;
+    --neu: #9aa1ad;
+    --you: #1b1f2b;
+    --them: #131826;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+    background:
+      radial-gradient(900px 600px at 20% -10%, rgba(124,92,255,0.18), transparent 60%),
+      radial-gradient(700px 500px at 100% 110%, rgba(45,212,191,0.10), transparent 60%),
+      var(--bg-0);
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    grid-template-rows: 56px 1fr 96px;
+    height: 100vh;
+    gap: 0;
+  }
+
+  header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+    border-bottom: 1px solid var(--line);
+    backdrop-filter: blur(14px);
+    background: rgba(10,12,20,0.55);
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 600; letter-spacing: 0.02em;
+  }
+  .brand-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    box-shadow: 0 0 12px rgba(124,92,255,0.6);
+  }
+  .status {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--fg-dim); font-size: 13px;
+  }
+  .status .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--fg-mute);
+  }
+  .status.live .dot { background: var(--pos); box-shadow: 0 0 10px var(--pos); animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.45; } }
+
+  main { overflow-y: auto; padding: 24px 28px; }
+  .conversation {
+    max-width: 760px; margin: 0 auto;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .empty {
+    display: flex; align-items: center; justify-content: center;
+    height: 60vh; color: var(--fg-mute); text-align: center;
+  }
+  .empty h2 { color: var(--fg-dim); font-weight: 500; margin: 0 0 6px; }
+
+  .turn {
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 14px 16px; border-radius: 14px;
+    border: 1px solid var(--line);
+    background: var(--them);
+  }
+  .turn.you {
+    background: var(--you);
+    border-color: var(--line-2);
+  }
+  .turn .hdr {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 12px; color: var(--fg-mute); text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .turn .text { font-size: 15px; color: var(--fg); }
+  .turn .text.transcribing { color: var(--fg-dim); font-style: italic; }
+
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--line);
+    font-size: 12px; color: var(--fg-dim);
+  }
+  .chip .swatch { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-mute); }
+  .chip.intent .swatch { background: var(--accent); }
+  .chip.tag .swatch { background: var(--accent-2); }
+  .chip.pos .swatch { background: var(--pos); }
+  .chip.neg .swatch { background: var(--neg); }
+  .chip.neu .swatch { background: var(--neu); }
+  .chip.fallback { color: #ffb454; }
+  .chip.fallback .swatch { background: #ffb454; }
+
+  .suggest {
+    margin-top: 6px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(124,92,255,0.10), rgba(124,92,255,0.04));
+    border: 1px solid rgba(124,92,255,0.28);
+    color: var(--fg);
+    position: relative;
+  }
+  .suggest .label {
+    font-size: 11px; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase;
+    margin-bottom: 4px; font-weight: 600;
+  }
+  .suggest .body { white-space: pre-wrap; }
+  .suggest.loading .body::after {
+    content: "▍"; margin-left: 2px; animation: blink 1s infinite; color: var(--accent);
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  aside {
+    border-left: 1px solid var(--line);
+    overflow-y: auto;
+    padding: 20px 18px;
+    background: rgba(255,255,255,0.015);
+  }
+  aside h3 {
+    margin: 0 0 12px; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.12em; color: var(--fg-mute);
+  }
+  .panel {
+    border: 1px solid var(--line);
+    background: rgba(255,255,255,0.02);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+
+  .dial { position: relative; height: 110px; display: flex; align-items: flex-end; justify-content: center; }
+  .dial svg { width: 220px; height: 110px; }
+  .dial .arc-bg { fill: none; stroke: var(--line); stroke-width: 10; }
+  .dial .arc-fg { fill: none; stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 600ms cubic-bezier(.2,.8,.2,1), stroke 400ms; }
+  .dial .needle { stroke: var(--fg); stroke-width: 2; transform-origin: 110px 100px; transition: transform 700ms cubic-bezier(.2,.8,.2,1); }
+  .dial .center { fill: var(--fg); }
+  .dial-val { position: absolute; bottom: 0; font-size: 22px; font-weight: 600; }
+  .dial-lbl { font-size: 11px; color: var(--fg-mute); text-align: center; margin-top: 6px; letter-spacing: 0.1em; text-transform: uppercase; }
+
+  .stat {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 0; border-bottom: 1px dashed var(--line);
+  }
+  .stat:last-child { border-bottom: 0; }
+  .stat .k { font-size: 12px; color: var(--fg-mute); letter-spacing: 0.04em; }
+  .stat .v { font-size: 13px; color: var(--fg); font-weight: 500; }
+
+  .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 600ms cubic-bezier(.2,.8,.2,1); }
+
+  .action-row {
+    display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px;
+  }
+  .action-row:last-child { margin-bottom: 0; }
+  .action-name { display: flex; justify-content: space-between; font-size: 13px; }
+  .action-name .pct { color: var(--fg-mute); font-variant-numeric: tabular-nums; }
+
+  footer {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--line);
+    background: rgba(10,12,20,0.6);
+    backdrop-filter: blur(14px);
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 24px;
+  }
+  .mic-btn {
+    flex: 0 0 auto;
+    width: 64px; height: 64px; border-radius: 50%;
+    border: 1px solid var(--line-2);
+    background: var(--bg-1);
+    color: var(--fg);
+    cursor: pointer;
+    display: grid; place-items: center;
+    transition: transform 200ms, box-shadow 300ms, background 200ms;
+    position: relative;
+  }
+  .mic-btn:hover { background: #1a1f2c; }
+  .mic-btn:active { transform: scale(0.96); }
+  .mic-btn svg { width: 26px; height: 26px; }
+  .mic-btn.live {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #0a0c14;
+    box-shadow: 0 0 0 0 rgba(124,92,255,0.6);
+    animation: ring 1.6s ease-out infinite;
+  }
+  @keyframes ring {
+    0% { box-shadow: 0 0 0 0 rgba(124,92,255,0.55); }
+    100% { box-shadow: 0 0 0 22px rgba(124,92,255,0); }
+  }
+
+  .input {
+    flex: 1; display: flex; gap: 10px; align-items: center;
+  }
+  .input input {
+    flex: 1; height: 44px; padding: 0 14px;
+    border: 1px solid var(--line-2);
+    background: var(--bg-1);
+    color: var(--fg);
+    border-radius: 10px;
+    font: inherit;
+    outline: none;
+  }
+  .input input:focus { border-color: var(--accent); }
+  .input button {
+    height: 44px; padding: 0 18px;
+    border: 1px solid var(--line-2);
+    background: var(--fg);
+    color: var(--bg-0);
+    border-radius: 10px;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+  }
+  .input button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .secondary {
+    background: transparent !important;
+    color: var(--fg-dim) !important;
+    border-color: var(--line-2) !important;
+  }
+
+  .hint { font-size: 12px; color: var(--fg-mute); text-align: center; margin-top: 18px; }
+  .hint code { background: var(--bg-1); padding: 2px 6px; border-radius: 4px; color: var(--fg-dim); }
+
+  @media (max-width: 880px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: 56px auto auto auto; }
+    aside { border-left: 0; border-top: 1px solid var(--line); max-height: 320px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand"><div class="brand-dot"></div><span>Customer-Care Co-pilot</span></div>
+    <div id="status" class="status"><div class="dot"></div><span id="status-text">idle</span></div>
+  </header>
+
+  <main>
+    <div class="conversation" id="conv">
+      <div class="empty">
+        <div>
+          <h2>Press the mic and start the call.</h2>
+          <div>I'll transcribe what the customer says, then suggest your next move.</div>
+          <div class="hint">No mic? Type a customer line below and hit <code>Send</code>.</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside>
+    <h3>Sentiment</h3>
+    <div class="panel">
+      <div class="dial">
+        <svg viewBox="0 0 220 110">
+          <path class="arc-bg" d="M 20 100 A 90 90 0 0 1 200 100"></path>
+          <path id="arc-fg" class="arc-fg" d="M 20 100 A 90 90 0 0 1 200 100" stroke="#9aa1ad"
+                stroke-dasharray="283" stroke-dashoffset="283"></path>
+          <line id="needle" class="needle" x1="110" y1="100" x2="110" y2="22"
+                style="transform: rotate(0deg);"></line>
+          <circle class="center" cx="110" cy="100" r="4"></circle>
+        </svg>
+        <div class="dial-val" id="dial-val">—</div>
+      </div>
+      <div class="dial-lbl" id="dial-lbl">awaiting input</div>
+    </div>
+
+    <h3>Detected</h3>
+    <div class="panel">
+      <div class="stat"><div class="k">Intent</div><div class="v" id="intent-v">—</div></div>
+      <div class="stat"><div class="k">Customer state</div><div class="v" id="ctag-v">—</div></div>
+      <div class="stat"><div class="k">Turn #</div><div class="v" id="seq-v">—</div></div>
+    </div>
+
+    <h3>Planner</h3>
+    <div class="panel" id="planner-panel">
+      <div class="stat"><div class="k">Confidence</div><div class="v" id="plan-conf">—</div></div>
+      <div class="bar" style="margin: 6px 0 14px;"><i id="plan-bar" style="width: 0%"></i></div>
+      <div id="plan-actions"></div>
+      <div class="stat" style="margin-top: 12px;"><div class="k">Expected outcome</div><div class="v" id="plan-out">—</div></div>
+    </div>
+  </aside>
+
+  <footer>
+    <button id="mic" class="mic-btn" title="Hold/click to talk">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="2" width="6" height="12" rx="3"></rect>
+        <path d="M5 10a7 7 0 0 0 14 0"></path>
+        <line x1="12" y1="17" x2="12" y2="22"></line>
+      </svg>
+    </button>
+    <div class="input">
+      <input id="text-in" type="text" placeholder="Or type what the customer said..." autocomplete="off" />
+      <button id="send-btn">Send</button>
+      <button id="reset-btn" class="secondary" title="Clear conversation">Reset</button>
+    </div>
+  </footer>
+</div>
+
+<script>
+const conversationId = "ui-" + Math.random().toString(36).slice(2, 10);
+const conv = document.getElementById("conv");
+const micBtn = document.getElementById("mic");
+const sendBtn = document.getElementById("send-btn");
+const resetBtn = document.getElementById("reset-btn");
+const textIn = document.getElementById("text-in");
+const status = document.getElementById("status");
+const statusText = document.getElementById("status-text");
+
+let firstTurn = true;
+let activeUserBubble = null;
+
+function setStatus(s, live = false) {
+  statusText.textContent = s;
+  status.classList.toggle("live", live);
+}
+
+function clearEmpty() {
+  if (firstTurn) {
+    conv.innerHTML = "";
+    firstTurn = false;
+  }
+}
+
+function bucket(score) {
+  if (score < -0.33) return "neg";
+  if (score > 0.33) return "pos";
+  return "neu";
+}
+
+function setSentiment(score, label) {
+  const arc = document.getElementById("arc-fg");
+  const needle = document.getElementById("needle");
+  const dialVal = document.getElementById("dial-val");
+  const dialLbl = document.getElementById("dial-lbl");
+  const total = 283;
+  const norm = (score + 1) / 2;
+  arc.style.strokeDashoffset = total * (1 - norm);
+  arc.setAttribute("stroke", score < -0.33 ? "#ef4f6a" : score > 0.33 ? "#2dd4bf" : "#9aa1ad");
+  const angle = -90 + norm * 180;
+  needle.style.transform = `rotate(${angle}deg)`;
+  dialVal.textContent = (score >= 0 ? "+" : "") + score.toFixed(2);
+  dialLbl.textContent = label;
+}
+
+function renderUserTurn(text, transcribing = false) {
+  clearEmpty();
+  const turn = document.createElement("div");
+  turn.className = "turn you";
+  turn.innerHTML = `
+    <div class="hdr"><span>Customer</span></div>
+    <div class="text${transcribing ? " transcribing" : ""}"></div>
+  `;
+  turn.querySelector(".text").textContent = text;
+  conv.appendChild(turn);
+  conv.parentElement.scrollTop = conv.parentElement.scrollHeight;
+  return turn;
+}
+
+function renderResponse(turnEl, data) {
+  const s = data.state;
+  const p = data.plan;
+
+  const sentChip = `<span class="chip ${bucket(s.sentiment.score)}">
+    <span class="swatch"></span>${s.sentiment.label} ${s.sentiment.score >= 0 ? "+" : ""}${s.sentiment.score.toFixed(2)}
+  </span>`;
+  const intentChip = `<span class="chip intent"><span class="swatch"></span>${s.intent}</span>`;
+  const ctagChip = `<span class="chip tag"><span class="swatch"></span>${s.customer_tag.replace(/^CUSTOMER_/, "").replace(/_/g, " ").toLowerCase()}</span>`;
+  const fallbackChip = data.used_fallback
+    ? `<span class="chip fallback"><span class="swatch"></span>fallback path</span>`
+    : "";
+
+  turnEl.querySelector(".text").classList.remove("transcribing");
+
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  meta.innerHTML = sentChip + intentChip + ctagChip + fallbackChip;
+  turnEl.appendChild(meta);
+
+  const sug = document.createElement("div");
+  sug.className = "suggest";
+  sug.innerHTML = `<div class="label">Suggested next move</div><div class="body"></div>`;
+  sug.querySelector(".body").textContent = data.suggested_reply;
+  turnEl.appendChild(sug);
+
+  setSentiment(s.sentiment.score, s.sentiment.label);
+  document.getElementById("intent-v").textContent = s.intent;
+  document.getElementById("ctag-v").textContent = s.customer_tag.replace(/^CUSTOMER_/, "").replace(/_/g, " ").toLowerCase();
+  document.getElementById("seq-v").textContent = s.seq;
+
+  const conf = Math.round((p.confidence || 0) * 100);
+  document.getElementById("plan-conf").textContent = conf + "%";
+  document.getElementById("plan-bar").style.width = conf + "%";
+  document.getElementById("plan-out").textContent = p.expected_outcome || "—";
+
+  const actions = document.getElementById("plan-actions");
+  actions.innerHTML = "";
+  const tags = p.next_agent_tags || [];
+  if (tags.length === 0) {
+    actions.innerHTML = `<div style="color:var(--fg-mute);font-size:13px">No graph match — using LLM fallback.</div>`;
+  } else {
+    const total = tags.length;
+    tags.forEach((t, i) => {
+      const w = Math.round(((total - i) / total) * 100);
+      const row = document.createElement("div");
+      row.className = "action-row";
+      row.innerHTML = `
+        <div class="action-name"><span>${t.replace(/^AGENT_/, "").replace(/_/g, " ").toLowerCase()}</span><span class="pct">${i + 1}</span></div>
+        <div class="bar"><i style="width:${w}%"></i></div>
+      `;
+      actions.appendChild(row);
+    });
+  }
+
+  conv.parentElement.scrollTop = conv.parentElement.scrollHeight;
+}
+
+async function sendTurn(text) {
+  if (!text || !text.trim()) return;
+  const turnEl = renderUserTurn(text, false);
+  const sug = document.createElement("div");
+  sug.className = "suggest loading";
+  sug.innerHTML = `<div class="label">Thinking…</div><div class="body"></div>`;
+  turnEl.appendChild(sug);
+  setStatus("thinking…");
+
+  try {
+    const r = await fetch("/turn", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation_id: conversationId, text }),
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const data = await r.json();
+    sug.remove();
+    renderResponse(turnEl, data);
+    setStatus("ready");
+  } catch (e) {
+    sug.classList.remove("loading");
+    sug.querySelector(".label").textContent = "Error";
+    sug.querySelector(".body").textContent = e.message;
+    setStatus("error");
+  }
+}
+
+sendBtn.addEventListener("click", () => {
+  const v = textIn.value;
+  textIn.value = "";
+  sendTurn(v);
+});
+textIn.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { sendBtn.click(); }
+});
+
+resetBtn.addEventListener("click", async () => {
+  await fetch("/reset/" + conversationId, { method: "POST" });
+  conv.innerHTML = `<div class="empty"><div><h2>Cleared. Ready for a new call.</h2></div></div>`;
+  firstTurn = true;
+  document.getElementById("intent-v").textContent = "—";
+  document.getElementById("ctag-v").textContent = "—";
+  document.getElementById("seq-v").textContent = "—";
+  document.getElementById("plan-conf").textContent = "—";
+  document.getElementById("plan-bar").style.width = "0%";
+  document.getElementById("plan-out").textContent = "—";
+  document.getElementById("plan-actions").innerHTML = "";
+  setSentiment(0, "awaiting input");
+  document.getElementById("dial-lbl").textContent = "awaiting input";
+  setStatus("idle");
+});
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recog = null;
+let recogActive = false;     // engine currently running
+let userWantsListening = false; // user pressed mic and hasn't stopped yet
+let finalizedText = "";      // committed pieces accumulated across restarts
+
+function updateBubbleText(interim) {
+  if (!activeUserBubble) return;
+  const combined = (finalizedText + " " + (interim || "")).replace(/\s+/g, " ").trim();
+  activeUserBubble.querySelector(".text").textContent = combined || "…";
+}
+
+function sendFinalAndReset() {
+  if (!activeUserBubble) return;
+  const finalText = finalizedText.trim();
+  if (!finalText) {
+    activeUserBubble.remove();
+    activeUserBubble = null;
+    setStatus("idle");
+    return;
+  }
+  activeUserBubble.querySelector(".text").classList.remove("transcribing");
+  activeUserBubble.querySelector(".text").textContent = finalText;
+
+  const sug = document.createElement("div");
+  sug.className = "suggest loading";
+  sug.innerHTML = `<div class="label">Thinking…</div><div class="body"></div>`;
+  activeUserBubble.appendChild(sug);
+  setStatus("thinking…");
+
+  const bubble = activeUserBubble;
+  activeUserBubble = null;
+
+  fetch("/turn", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ conversation_id: conversationId, text: finalText }),
+  }).then(r => r.json()).then(data => {
+    sug.remove();
+    renderResponse(bubble, data);
+    setStatus("ready");
+  }).catch(e => {
+    sug.classList.remove("loading");
+    sug.querySelector(".label").textContent = "Error";
+    sug.querySelector(".body").textContent = e.message;
+    setStatus("error");
+  });
+}
+
+if (SR) {
+  recog = new SR();
+  recog.continuous = true;
+  recog.interimResults = true;
+  recog.lang = "en-US";
+  if ("maxAlternatives" in recog) recog.maxAlternatives = 1;
+
+  recog.onstart = () => {
+    recogActive = true;
+    micBtn.classList.add("live");
+    setStatus("listening…", true);
+    if (!activeUserBubble) {
+      finalizedText = "";
+      activeUserBubble = renderUserTurn("…", true);
+    }
+  };
+
+  recog.onresult = (ev) => {
+    let interim = "";
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const res = ev.results[i];
+      const txt = res[0].transcript;
+      if (res.isFinal) {
+        finalizedText = (finalizedText + " " + txt).replace(/\s+/g, " ").trim();
+      } else {
+        interim += txt;
+      }
+    }
+    updateBubbleText(interim);
+  };
+
+  recog.onerror = (ev) => {
+    if (ev.error === "no-speech" || ev.error === "audio-capture" || ev.error === "network") {
+      // recoverable; let onend handle the restart
+      return;
+    }
+    setStatus("mic error: " + ev.error);
+    userWantsListening = false;
+  };
+
+  recog.onend = () => {
+    recogActive = false;
+    if (userWantsListening) {
+      // Browser auto-stopped after silence. Restart so the user keeps talking.
+      try { recog.start(); } catch (_) {}
+      return;
+    }
+    // User actually clicked stop → send what we accumulated.
+    micBtn.classList.remove("live");
+    sendFinalAndReset();
+  };
+} else {
+  micBtn.disabled = true;
+  micBtn.title = "Speech recognition not supported in this browser. Use Chrome.";
+  micBtn.style.opacity = 0.4;
+  micBtn.style.cursor = "not-allowed";
+}
+
+micBtn.addEventListener("click", () => {
+  if (!recog) return;
+  if (userWantsListening) {
+    // User is stopping the call.
+    userWantsListening = false;
+    setStatus("processing…");
+    try { recog.stop(); } catch (_) {}
+  } else {
+    // User is starting a fresh turn.
+    userWantsListening = true;
+    finalizedText = "";
+    try { recog.start(); }
+    catch (_) {
+      // already running for some reason — abort and restart cleanly
+      try { recog.abort(); } catch (_) {}
+      setTimeout(() => { try { recog.start(); } catch (_) {} }, 80);
+    }
+  }
+});
+
+setStatus("idle");
+</script>
+</body>
+</html>
